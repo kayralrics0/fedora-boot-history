@@ -1,0 +1,18 @@
+[Unit]
+Description=Record Linux boot history
+After=local-fs.target
+Before=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/boot-history/record-boot.sh
+StateDirectory=boot-history
+StateDirectoryMode=0750
+UMask=0027
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

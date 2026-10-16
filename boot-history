@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+"""Display boot records collected by the Fedora Boot History service."""
+
+import argparse
+import csv
+import json
+import sys
+from pathlib import Path
+
+DEFAULT_LOG = Path("/var/lib/boot-history/boots.tsv")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Show recorded Linux boot times (local time and UTC)."
+    )
+    parser.add_argument(
+        "--all", action="store_true", help="show every recorded boot"
+    )
+    parser.add_argument(
+        "--limit", type=int, default=20,
+        help="number of recent boots to show (default: 20)"
+    )
+    parser.add_argument(
+        "--json", action="store_true", help="print records as JSON"
+    )
+    parser.add_argument(
+        "--log-path", type=Path, default=DEFAULT_LOG,
+        help=argparse.SUPPRESS
+    )
+    args = parser.parse_args()
+    if args.limit < 1:
+        parser.error("--limit must be at least 1")
+    return args
+
+
+def main() -> int:
+    args = parse_args()
+    try:
+        with args.log_path.open("r", encoding="utf-8", newline="") as handle:
+            records = list(csv.DictReader(handle, delimiter="\t"))
+    except FileNotFoundError:
+        print(
+            "No boot history was found. Install and enable the boot-history service first.",
+            file=sys.stderr,
+        )
+        return 1
+    except (OSError, csv.Error) as exc:
+        print(f"Unable to read boot history: {exc}", file=sys.stderr)
+        return 1
+
+    # Newest entry first; each boot ID is recorded at most once.
+    records.reverse()
+    shown = records if args.all else records[: args.limit]
+
+    if args.json:
+        print(json.dumps(shown, indent=2, ensure_ascii=False))
+        return 0
+
+    if not shown:
+        print("No boot records have been collected yet.")
+        return 0
+
+    print(f"Fedora Boot History — {len(records)} recorded boot(s)")
+    print("Times are recorded in the system's local time zone and in UTC.")
+    print()
+    print(
+        f"{'#':>3}  {'BOOT TIME (LOCAL)':<26}  {'BOOT TIME (UTC)':<20}  "
+        f"{'RECORDED AT (LOCAL)':<26}  {'UPTIME':>8}  {'BOOT ID':<8}"
+    )
+    print("-" * 112)
+    for index, row in enumerate(shown, start=1):
+        print(
+            f"{index:>3}  {row.get('boot_time_local', ''):<26}  "
+            f"{row.get('boot_time_utc', ''):<20}  "
+            f"{row.get('recorded_at_local', ''):<26}  "
+            f"{row.get('seconds_after_boot', ''):>8}  "
+            f"{row.get('boot_id', '')[:8]:<8}"
+        )
+    if not args.all and len(records) > len(shown):
+        print(f"\nShowing {len(shown)} of {len(records)} records. Use --all to show all.")
+    print(f"\nFull log: {args.log_path}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
